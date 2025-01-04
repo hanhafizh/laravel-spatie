@@ -16,9 +16,3 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
-
-Route::get('drop', 'DropfileController@index');
-Route::post('drop', 'DropfileController@store');
-Route::get('drop/{filetitle}', 'DropfileController@show');
-Route::get('drop/{filetitle}/download', 'DropfileController@download');
-Route::get('drop/{id}/destroy', 'DropfileController@destroy');
