@@ -8,13 +8,6 @@ use App\Models\Dropfile;
 
 class DropfileController extends Controller
 {
-    // private $dropbox;
-
-    public function __construct()
-    {
-        $this->dropbox = Storage::disk('dropbox')->getDriver()->getAdapter()->getClient();
-    }
-
     public function index()
     {
         $files = Dropfile::all();
@@ -30,13 +23,14 @@ class DropfileController extends Controller
                 foreach ($files as $file) {
                     $fileExtension = $file->getClientOriginalExtension();
                     $mimeType = $file->getClientMimeType();
-                    $fileSize = $file->getClientSize();
+                    $fileSize = $file->getSize();
                     $newName = uniqid() . '.' . $fileExtension;
 
+                    // Membaca konten file
+                    $fileContent = file_get_contents($file->getRealPath());
 
                     // Upload ke Dropbox
-                    Storage::disk('dropbox')->putFileAs('public/upload/', $file, $newName);
-                    $this->dropbox->createSharedLinkWithSettings('public/upload/' . $newName);
+                    Storage::disk('dropbox')->put('public/upload/' . $newName, $fileContent);
 
                     // Simpan metadata file ke database
                     Dropfile::create([
@@ -56,13 +50,17 @@ class DropfileController extends Controller
     public function show($fileTitle)
     {
         try {
-            $link = $this->dropbox->listSharedLinks('public/upload/' . $fileTitle);
-            $raw = explode("?", $link[0]['url']);
-            $path = $raw[0] . '?raw=1';
-            $tempPath = tempnam(sys_get_temp_dir(), $path);
-            $copy = copy($path, $tempPath);
+            // Mengambil Dropbox client melalui disk
+            $dropboxClient = Storage::disk('dropbox')->getAdapter()->getClient();
 
-            return response()->file($tempPath);
+            // Mengambil link berbagi dari Dropbox
+            $link = $dropboxClient->createSharedLinkWithSettings('public/upload/' . $fileTitle);
+
+            // Menyiapkan URL dengan parameter raw
+            $rawUrl = $link['url'] . '?raw=1';
+
+            // Menyajikan file sebagai response
+            return response()->redirectTo($rawUrl);
         } catch (\Exception $e) {
             return abort(404);
         }
@@ -71,17 +69,29 @@ class DropfileController extends Controller
     public function download($fileTitle)
     {
         try {
-            return Storage::disk('dropbox')->download('public/upload/' . $fileTitle);
+            // Mengambil Dropbox client melalui disk
+            $dropboxClient = Storage::disk('dropbox')->getAdapter()->getClient();
+
+            // Mendapatkan file dari Dropbox melalui shared link
+            $link = $dropboxClient->createSharedLinkWithSettings('public/upload/' . $fileTitle);
+            $rawUrl = $link['url'] . '?raw=1';
+
+            // Mengunduh file menggunakan URL raw
+            return response()->download($rawUrl);
         } catch (\Exception $e) {
             return abort(404);
         }
     }
 
-    public function destory($id)
+    public function destroy($id)
     {
         try {
-            $file = Dropfile::find($id);
+            $file = Dropfile::findOrFail($id);
+
+            // Menghapus file dari Dropbox
             Storage::disk('dropbox')->delete('public/upload/' . $file->file_title);
+
+            // Menghapus metadata file dari database
             $file->delete();
 
             return redirect('drop');
